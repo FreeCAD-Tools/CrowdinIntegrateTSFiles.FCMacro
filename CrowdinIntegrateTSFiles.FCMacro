@@ -1,0 +1,76 @@
+#! python
+# -*- coding: utf-8 -*-
+# (c) 2021 <Evgeniy>
+
+import sys, os, zipfile, re
+import urllib.request
+import subprocess
+
+# 1. Get path to $USER/AppData/Roaming/FreeCAD/ folder
+path = App.getUserAppDataDir()
+trans_path = os.path.join(path,"translations")
+ts_path = os.path.join(path,"ts")
+# Create translation and FreeCAD_zip folder if it not exists
+os.makedirs(trans_path, exist_ok = True)
+os.makedirs(ts_path, exist_ok = True)
+print("Copy youre *.ts files to folder: "+ts_path)
+print("And run this script")
+print("You can use subfolders in \ts folder! But path does not contain space chars!")
+
+# 2. Check lrealase.exe utility in folder
+lrel_path = os.path.join(path,"lrelase.exe")
+if not os.path.exists(trans_path.replace("translations","lrelease.exe")):
+   print(lrel_path+" is not found... process stopped")
+   print("please copy lrelease.exe utilty to folder: "+trans_path.replace("translations","")+" and try again!")
+   sys.exit(-1)
+
+def get_locale_from_file(path):
+   file = open(path, "r", encoding="utf8")
+   text = file.read()
+   locale = re.search(r'" language="[^"]+"',text).group()
+   locale = locale.replace('"','').replace(" language=","")
+   file.close()
+   return locale   
+
+# 3. Make list of files
+print("\nScan "+ts_path+" folder...")
+file_list = []
+supported_locales = Gui.supportedLocales().values()
+os.chdir(path)
+# Walk into FreeCAD unzipped folder and lrelease all files
+for dirpath, subdirs, files in os.walk(ts_path):
+   for file in files:
+      if file.endswith(".ts"):
+         file_path = os.path.join(dirpath, file)
+         locale = get_locale_from_file(file_path)
+         print(file_path+" ["+locale+"]")
+         file_list.append((file,file_path,locale))
+print(str(len(file_list))+" files will be converted\n")
+
+# 4. Translate all files with lrelease
+progress=0
+for file_info in file_list:
+   file_name,file_path,locale=file_info
+   out_locale = locale #"de"
+   #os.system("lrelease "+file_path)
+   FreeCADGui.updateGui()
+   subprocess.call("lrelease "+file_path, shell=True, cwd=path)
+   qm_file_path=file_path.replace(".ts",".qm")
+   if not os.path.exists(qm_file_path):
+      print("ERROR: of creation " + qm_file_path + " file, it does not exist, aborting")
+      sys.exit(-1)
+   else:
+      # Rename and move file
+      qm_file_name=file_name.replace(".ts","_"+out_locale+".qm")
+      qm_new_path=os.path.join(trans_path,qm_file_name)
+      if os.path.exists(qm_new_path):
+         FreeCADGui.updateGui()
+         os.remove(qm_new_path) 
+      os.rename(qm_file_path,qm_new_path)
+      perc = 100/len(file_list)*progress
+      print(" {0:6.2f}% ".format(perc) + file_path.replace(path,"") +" -> "+qm_file_name)
+      FreeCADGui.updateGui()  
+   progress+=1
+
+# 5. Complete message
+print("Integration of *.ts files complited!") 
